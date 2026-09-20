@@ -2,6 +2,8 @@
 
 Interactive portfolio backtesting application built with Streamlit.
 
+🔗 **Live app:** [banger-tester.streamlit.app](https://banger-tester.streamlit.app/)
+
 ## Features
 - Multi-ticker portfolio allocation
 - Historical performance backtesting (1D to 5Y)

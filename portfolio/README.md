@@ -2,7 +2,7 @@
 
 Interactive portfolio backtesting service that allows you to:
 - Create portfolios with custom ticker weight distributions
-- Backtest performance over different time periods (1d, 1w, 1m, 1y)
+- Backtest performance over different time periods (1d, 1w, 1m, 1y, 3y, 5y)
 - See ROI percentage for each period
 - Visualize portfolio performance with interactive charts
 - Compare different weight distributions
@@ -11,7 +11,8 @@ Interactive portfolio backtesting service that allows you to:
 
 - **Interactive Web Interface**: Streamlit-based UI with sliders to adjust portfolio weights
 - **Concurrent Data Fetching**: Fetches historical prices for multiple tickers in parallel
-- **Multiple Time Periods**: Analyze performance over 1 day, 1 week, 1 month, and 1 year
+- **Multiple Time Periods**: Analyze performance over 1 day, 1 week, 1 month, 1, 3 and 5 years
+- **Saved Portfolios**: Save, load, overwrite and delete named pies
 - **Real-time ROI Calculation**: See return percentages and absolute dollar returns
 - **Visual Charts**: Interactive pie charts and time series charts using Plotly
 - **Baseline Normalization**: Uses a configurable baseline amount ($10,000 default) for consistent comparisons
@@ -89,7 +90,7 @@ python3 portfolio/test_backtester.py
    - Handles multiple time periods
 
 2. **PriceDataFetcher** (`data_fetcher.py`)
-   - Fetches historical price data from Finnhub API
+   - Fetches historical price data from Yahoo Finance (yfinance)
    - Concurrent fetching for multiple tickers
    - Handles date lookups and price retrieval
 
@@ -98,7 +99,11 @@ python3 portfolio/test_backtester.py
    - Computes portfolio values over time
    - Calculates returns and performance metrics
 
-4. **Streamlit App** (`app.py`)
+4. **PortfolioStore** (`storage.py`)
+   - Saves/loads named portfolios (weights) and imported transactions
+   - Postgres when `DATABASE_URL` is set, local SQLite otherwise
+
+5. **Streamlit App** (`app.py`)
    - Interactive web interface
    - Real-time weight adjustment
    - Chart visualization
@@ -185,7 +190,5 @@ backtest_portfolio(
 
 ## Notes
 
-- Requires Finnhub API key (set in `.env` file)
-- Historical data availability depends on Finnhub API
-- Free tier has rate limits (60 calls/minute)
+- No API key needed; historical data availability depends on Yahoo Finance
 - Missing data for specific dates will use closest available price

@@ -13,7 +13,6 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from portfolio.portfolio_backtester import PortfolioBacktester
-from config.settings import FINNHUB_API_KEY
 
 
 # Unit tests for extended hours population

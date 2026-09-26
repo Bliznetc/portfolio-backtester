@@ -26,6 +26,7 @@ sys.path.insert(0, str(project_root))
 from portfolio.portfolio_backtester import PortfolioBacktester
 from portfolio.portfolio_calculator import PortfolioSnapshot
 from portfolio.data_fetcher import PriceDataFetcher
+from portfolio.storage import PortfolioStore
 
 # Page config
 st.set_page_config(
@@ -48,6 +49,23 @@ if 'performance' not in st.session_state:
     st.session_state.performance = None
 if 'slider_version' not in st.session_state:
     st.session_state.slider_version = 0
+if 'loaded_portfolio_name' not in st.session_state:
+    st.session_state.loaded_portfolio_name = ""
+
+
+@st.cache_resource
+def get_store():
+    """Connect once per server process (failures aren't cached, so they're retried)."""
+    return PortfolioStore()
+
+
+try:
+    store = get_store()
+    store_error = None
+except Exception as e:
+    logging.exception("Could not connect to the portfolio database")
+    store = None
+    store_error = str(e).splitlines()[0] if str(e) else type(e).__name__
 
 st.title("📊 Portfolio Backtester")
 st.markdown("Build your pie and see how it would have performed!")
@@ -65,6 +83,66 @@ with st.sidebar:
         step=100.0
     )
     st.session_state.backtester.baseline_amount = baseline
+    
+    # Saved portfolios
+    st.subheader("💾 Saved Portfolios")
+    if store is None:
+        st.error("Database unavailable - portfolios can't be saved right now.")
+        st.caption(store_error)
+    else:
+        saved = {p.id: p for p in store.list_portfolios()}
+        if saved:
+            selected_id = st.selectbox(
+                "Saved portfolios",
+                options=list(saved),
+                format_func=lambda pid: f"{saved[pid].name} ({saved[pid].broker})",
+                key="saved_portfolio_select"
+            )
+            selected = saved[selected_id]
+            col_load, col_delete_saved = st.columns([1, 1])
+            with col_load:
+                if st.button("📂 Load", key="load_portfolio_btn"):
+                    portfolio = store.get_portfolio(selected.id)
+                    st.session_state.tickers = list(portfolio.weights)
+                    st.session_state.weights = dict(portfolio.weights)
+                    st.session_state.loaded_portfolio_name = portfolio.name
+                    st.session_state.performance = None
+                    st.session_state.slider_version += 1
+                    st.rerun()
+            with col_delete_saved:
+                if st.button("🗑️ Delete", key="delete_portfolio_btn"):
+                    store.delete_portfolio(selected.id)
+                    if st.session_state.loaded_portfolio_name == selected.name:
+                        st.session_state.loaded_portfolio_name = ""
+                    st.rerun()
+        else:
+            st.caption("No saved portfolios yet.")
+        
+        portfolio_name = st.text_input(
+            "Portfolio name",
+            value=st.session_state.loaded_portfolio_name,
+            key=f"portfolio_name_v{st.session_state.slider_version}",
+            placeholder="e.g., Tech growth"
+        )
+        if st.button("💾 Save current pie", key="save_portfolio_btn"):
+            weights = {
+                t: w for t, w in st.session_state.weights.items()
+                if t in st.session_state.tickers
+            }
+            if not portfolio_name.strip():
+                st.error("❌ Enter a name first")
+            elif not weights:
+                st.error("❌ Add at least one ticker first")
+            else:
+                store.save_portfolio(portfolio_name, weights)
+                st.session_state.loaded_portfolio_name = portfolio_name.strip()
+                st.session_state.save_message = f"✅ Saved '{portfolio_name.strip()}'"
+                st.rerun()
+        if 'save_message' in st.session_state:
+            st.success(st.session_state.pop('save_message'))
+        st.caption("Saving with an existing name overwrites it.")
+    
+    st.markdown("---")
     
     # Ticker input
     st.subheader("Tickers")

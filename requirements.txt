@@ -2,3 +2,5 @@ streamlit
 plotly
 yfinance
 pytz
+sqlalchemy>=2.0
+psycopg[binary]

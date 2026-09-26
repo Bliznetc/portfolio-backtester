@@ -10,5 +10,6 @@ This module provides tools for:
 from .portfolio_backtester import PortfolioBacktester
 from .data_fetcher import PriceDataFetcher
 from .portfolio_calculator import PortfolioCalculator
+from .storage import PortfolioStore
 
-__all__ = ['PortfolioBacktester', 'PriceDataFetcher', 'PortfolioCalculator']
+__all__ = ['PortfolioBacktester', 'PriceDataFetcher', 'PortfolioCalculator', 'PortfolioStore']

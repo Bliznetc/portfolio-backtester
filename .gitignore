@@ -8,3 +8,7 @@ venv/
 .vscode/
 .idea/
 *.log
+
+# Local secrets and data
+.streamlit/secrets.toml
+data/

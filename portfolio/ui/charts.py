@@ -2,6 +2,7 @@
 Plotly figure builders and time-series prep for the Streamlit UI.
 """
 
+import math
 from typing import Dict, List
 
 import plotly.express as px
@@ -112,5 +113,57 @@ def return_pct_chart(
         yaxis_title="Return (%)",
         hovermode='closest',
         xaxis=_index_axis(date_labels),
+    )
+    return fig
+
+
+def dependency_bubble_chart(center_label: str, categories: List[dict]) -> go.Figure:
+    """
+    A simple radial bubble diagram: `center_label` (the instrument) in the
+    middle, one bubble per dependency category spaced evenly around it in a
+    circle. Each category dict needs "category_id" and "name" - category_id
+    is carried as each bubble's customdata so a caller using
+    st.plotly_chart(fig, on_select="rerun") can read back which one was
+    clicked; the center bubble's customdata is -1 so it can be told apart
+    from an actual category.
+    """
+    n = len(categories)
+    radius = 2.5
+    xs, ys, labels, customdata, sizes = [0.0], [-0.35], [center_label], [[-1]], [70]
+    line_x, line_y = [], []
+    for i, cat in enumerate(categories):
+        angle = 2 * math.pi * i / n
+        x, y = radius * math.cos(angle), radius * math.sin(angle)
+        xs.append(x)
+        ys.append(y - 0.35)
+        labels.append(cat["name"])
+        customdata.append([cat["category_id"]])
+        sizes.append(50)
+        line_x += [0, x, None]
+        line_y += [0, y, None]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=line_x, y=line_y, mode='lines',
+        line=dict(color='rgba(150,150,150,0.4)', width=1),
+        hoverinfo='skip', showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=xs, y=ys, mode='markers+text',
+        text=labels, textposition='bottom center',
+        marker=dict(
+            size=sizes,
+            color=['#4f8bf9'] + ['#f97316'] * n,
+            line=dict(width=2, color='white'),
+        ),
+        customdata=customdata,
+        hovertemplate='%{text}<extra></extra>',
+    ))
+    fig.update_layout(
+        showlegend=False,
+        xaxis=dict(visible=False, range=[-radius - 2, radius + 2]),
+        yaxis=dict(visible=False, range=[-radius - 2, radius + 1.5], scaleanchor='x'),
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=420,
     )
     return fig

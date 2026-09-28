@@ -12,7 +12,12 @@ import streamlit as st
 
 from portfolio.core import fx, pnl, positions
 from portfolio.storage import portfolio_store
-from portfolio.ui.working_config import cached_transactions, fetch_current_prices, load_config
+from portfolio.ui import charts
+from portfolio.ui.working_config import (
+    cached_transactions, create_category_and_link, fetch_analyst_ratings, fetch_current_prices,
+    fetch_price_targets, get_classification, get_dependencies, link_existing_category, list_all_categories,
+    load_config, remove_dependency, set_category_tickers,
+)
 
 POSITIONS_PATH = "positions"
 
@@ -87,6 +92,101 @@ def activate_portfolio_from_query(portfolio_param):
         load_config(match)
 
 
+def _render_dependencies_section(ticker, pos):
+    """
+    The "what influences this price" bubble diagram plus the add/remove UI
+    for one ticker's dependency categories - see core.dependencies for
+    where the AI-suggested bubbles come from (a no-op without an API key)
+    and dependencies_store for how manual entries land in the same table.
+    """
+    if not pos:
+        return
+
+    dependencies = get_dependencies(ticker, pos.isin, pos.price_currency)
+
+    if dependencies:
+        fig = charts.dependency_bubble_chart(ticker, dependencies)
+        event = st.plotly_chart(
+            fig, key=f"dependency_bubbles_{ticker}", on_select="rerun", selection_mode="points",
+        )
+
+        selected_category_id = None
+        if event and event.selection and event.selection.points:
+            for point in event.selection.points:
+                customdata = point.get("customdata")
+                if customdata and customdata[0] != -1:
+                    selected_category_id = customdata[0]
+                    break
+
+        if selected_category_id is not None:
+            selected = next((d for d in dependencies if d["category_id"] == selected_category_id), None)
+            if selected:
+                header_col, unlink_col = st.columns([5, 1])
+                header_col.markdown(f"**{selected['name']}**")
+                if unlink_col.button(
+                    "Unlink", key=f"remove_dep_{selected['dependency_id']}", type="tertiary",
+                    help=f"Remove this category from {ticker} (the category itself isn't deleted).",
+                ):
+                    remove_dependency(selected["dependency_id"])
+                    st.rerun()
+
+                if selected.get("description"):
+                    st.caption(selected["description"])
+
+                # A single chip-style widget replaces separate remove/add
+                # controls per ticker - typing a new one and removing a chip
+                # both edit the category itself, shared by every instrument
+                # linked to it, not just this one.
+                rep_tickers = selected.get("representative_tickers") or []
+                edited = st.multiselect(
+                    "Representative instruments", options=rep_tickers, default=rep_tickers,
+                    accept_new_options=True, placeholder="Add a ticker (e.g. XLE)...",
+                    key=f"rep_tickers_{selected_category_id}", label_visibility="collapsed",
+                )
+                if sorted(t.upper() for t in edited) != sorted(rep_tickers):
+                    set_category_tickers(selected_category_id, edited)
+                    st.rerun()
+        else:
+            st.caption("Click a bubble to see and edit its representative instruments.")
+    else:
+        st.info(
+            "No dependencies yet for this ticker. Link one below - AI "
+            "suggestions will appear here automatically once an API key is "
+            "configured."
+        )
+
+    with st.expander("+ Link another dependency" if dependencies else "+ Link a dependency"):
+        all_categories = list_all_categories()
+        linked_category_ids = {d["category_id"] for d in dependencies}
+        category_names = [c["name"] for c in all_categories]
+        choice = st.selectbox(
+            "Category", options=["+ Create new category..."] + category_names,
+            key=f"dependency_category_choice_{ticker}",
+        )
+
+        if choice == "+ Create new category...":
+            with st.form(key=f"create_category_form_{ticker}", clear_on_submit=True):
+                new_name = st.text_input("Category name", placeholder="e.g. Energy Costs")
+                new_description = st.text_input("Why it matters (optional)")
+                new_tickers_raw = st.text_input(
+                    "Representative tickers, comma-separated (optional)", placeholder="XLE, VDE",
+                )
+                if st.form_submit_button("Create and link") and new_name.strip():
+                    tickers_list = [t.strip().upper() for t in new_tickers_raw.split(",") if t.strip()]
+                    create_category_and_link(
+                        ticker, pos.isin, pos.price_currency, new_name.strip(),
+                        new_description.strip() or None, tickers_list,
+                    )
+                    st.rerun()
+        else:
+            chosen = next((c for c in all_categories if c["name"] == choice), None)
+            if chosen and chosen["id"] in linked_category_ids:
+                st.caption(f"{ticker} is already linked to '{choice}'.")
+            elif chosen and st.button(f"Link to '{choice}'", key=f"link_existing_{ticker}"):
+                link_existing_category(ticker, pos.isin, pos.price_currency, chosen["id"])
+                st.rerun()
+
+
 def render_ticker_transactions_page(ticker, positions_page):
     if st.button("← Back to Positions"):
         # st.switch_page needs the actual Page object this session's
@@ -97,7 +197,7 @@ def render_ticker_transactions_page(ticker, positions_page):
         # fall back to whichever page has default=True instead.
         st.switch_page(positions_page)
 
-    st.header(f"Transactions: {ticker}")
+    st.header(ticker)
 
     all_txs = cached_transactions(st.session_state.active_config_id)
     ticker_txs = sorted(
@@ -109,26 +209,82 @@ def render_ticker_transactions_page(ticker, positions_page):
 
     computed = positions.compute_positions(ticker_txs)
     pos = computed.get(ticker)
+
+    if pos:
+        classification = get_classification(ticker, pos.isin, pos.price_currency)
+        if classification:
+            sector = classification.get("yf_sector") or "-"
+            industry = classification.get("yf_industry") or "-"
+            ai_label = classification.get("ai_classification")
+            if ai_label:
+                st.markdown(f"##### 🏷️ {ai_label}")
+                st.caption(f"Yahoo: {sector} / {industry}")
+                if classification.get("ai_rationale"):
+                    st.caption(f"_{classification['ai_rationale']}_")
+            else:
+                st.markdown(f"##### 🏷️ {sector} / {industry}")
+                st.caption("AI classification not yet enabled")
+
     current_prices, _ = fetch_current_prices(computed)
     fifo_pos = pnl.compute_fifo_pnl(ticker_txs, current_prices).get(ticker)
     ccy = (pos.price_currency if pos else None) or ""
     current_price = current_prices.get(ticker)
+    target = fetch_price_targets(computed).get(ticker) if pos else None
 
     def _fmt(value, currency=ccy):
         return f"{value:.2f} {currency}" if value is not None else "-"
 
-    cols = st.columns(5)
+    cols = st.columns(6)
     cols[0].metric("Held", f"{pos.quantity_held:.4f}" if pos else "-")
     cols[1].metric("Avg Buy Price", _fmt(fifo_pos.avg_cost_price if fifo_pos else None))
     cols[2].metric("Current Price", _fmt(current_price))
-    cols[3].metric("Cost Basis", _fmt(fifo_pos.cost_basis_remaining if fifo_pos else None))
+    cols[3].metric("Target Price (Mean)", _fmt(target.mean if target else None))
+    cols[4].metric("Cost Basis", _fmt(fifo_pos.cost_basis_remaining if fifo_pos else None))
     unrealized = fifo_pos.unrealized_pnl if fifo_pos else None
-    cols[4].metric(
+    cols[5].metric(
         "Unrealized P/L",
         _fmt(unrealized),
         delta=round(unrealized, 2) if unrealized is not None else None,
     )
+
+    with st.expander("📊 Analyst Price Targets"):
+        if target is None:
+            st.info("No analyst price target data available for this ticker.")
+        else:
+            t_cols = st.columns(4)
+            t_cols[0].metric("Low", _fmt(target.low))
+            t_cols[1].metric("Mean", _fmt(target.mean))
+            t_cols[2].metric("Median", _fmt(target.median))
+            t_cols[3].metric("High", _fmt(target.high))
+            st.caption(
+                f"Based on {target.num_analysts if target.num_analysts is not None else '-'} "
+                f"analyst opinion(s). Consensus: {target.recommendation_key or '-'}"
+                + (f" ({target.recommendation_mean:.2f}/5)" if target.recommendation_mean is not None else "")
+            )
+
+            ratings = fetch_analyst_ratings(ticker, pos.isin, pos.price_currency) if pos else []
+            if ratings:
+                st.markdown(f"**By firm** ({len(ratings)})")
+                rating_rows = [
+                    {
+                        "Firm": r.firm,
+                        "Rating": r.grade or "-",
+                        "Price Target": _round_or_none(r.price_target),
+                        "Currency": ccy or "-",
+                        "As of": r.date,
+                    }
+                    for r in ratings
+                ]
+                st.dataframe(
+                    rating_rows, width='stretch', hide_index=True,
+                    height=min(_dataframe_height(len(rating_rows)), 400),
+                )
+
+    with st.expander("🔗 What Influences This Price"):
+        _render_dependencies_section(ticker, pos)
+
     st.markdown("---")
+    st.subheader("Transactions")
 
     rows = [
         {
@@ -155,6 +311,7 @@ def render_positions_table():
     computed = positions.compute_positions(all_txs)
     current_prices, _ = fetch_current_prices(computed)
     fifo = pnl.compute_fifo_pnl(all_txs, current_prices)
+    price_targets = fetch_price_targets(computed)
 
     st.header("Positions")
     st.caption(
@@ -177,11 +334,13 @@ def render_positions_table():
         unrealized = fifo_pos.unrealized_pnl if fifo_pos else None
         realized_fifo = _single_currency_amount(fifo_pos.realized_pnl) if fifo_pos else None
         dividends_usd = fx.convert_amounts_to_usd(pos.dividends_received)
+        target = price_targets.get(ticker)
 
         all_rows.append({
             "Ticker": ticker,
             "Held": round(pos.quantity_held, 4),
             "Avg Buy Price (Held)": _round_or_none(fifo_pos.avg_cost_price if fifo_pos else None),
+            "Target Price (Mean)": _round_or_none(target.mean if target else None),
             "Cost Basis": _round_or_none(cost_basis),
             "Unrealized P/L (FIFO)": _round_or_none(unrealized),
             "Realized P/L (FIFO)": _round_or_none(realized_fifo),
@@ -227,6 +386,7 @@ def render_positions_table():
             "Ticker": f"TOTAL ({ccy})",
             "Held": None,
             "Avg Buy Price (Held)": None,
+            "Target Price (Mean)": None,
             "Cost Basis": _round_or_none(cost_basis_by_ccy.get(ccy)),
             "Unrealized P/L (FIFO)": _round_or_none(unrealized_by_ccy.get(ccy)),
             "Realized P/L (FIFO)": _round_or_none(realized_fifo_by_ccy.get(ccy)),
@@ -269,7 +429,10 @@ def render_positions_table():
         "'Currency'. 'Dividends (USD)' is converted at today's exchange rate "
         "(a summary stat, unlike the trade-based columns, which stay "
         "unconverted) - falls back to unconverted text only if a currency's "
-        "rate can't be fetched."
+        "rate can't be fetched. 'Target Price (Mean)' is the average "
+        "12-month analyst price target from Yahoo Finance - blank for "
+        "closed positions and for tickers with no analyst coverage (common "
+        "for ETFs, indices, and thinly-traded stocks)."
     )
 
     any_unknown_cost = any(fifo[t].quantity_unknown_cost > 1e-6 for t in fifo)

@@ -74,6 +74,45 @@ _SCHEMA_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_transactions_ticker
         ON transactions(portfolio_config_id, ticker)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS instrument_classifications (
+        yf_symbol         TEXT PRIMARY KEY,
+        display_ticker    TEXT,
+        yf_sector         TEXT,
+        yf_industry       TEXT,
+        business_summary  TEXT,
+        ai_classification TEXT,
+        ai_rationale      TEXT,
+        ai_model          TEXT,
+        ai_generated_at   TIMESTAMPTZ,
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS dependency_categories (
+        id                      BIGSERIAL PRIMARY KEY,
+        name                    TEXT UNIQUE NOT NULL,
+        description             TEXT,
+        representative_tickers  JSONB NOT NULL DEFAULT '[]',
+        source                  TEXT NOT NULL DEFAULT 'manual',
+        created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS instrument_dependencies (
+        id            BIGSERIAL PRIMARY KEY,
+        yf_symbol     TEXT NOT NULL,
+        category_id   BIGINT NOT NULL REFERENCES dependency_categories(id) ON DELETE CASCADE,
+        rationale     TEXT,
+        source        TEXT NOT NULL DEFAULT 'manual',
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (yf_symbol, category_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_instrument_dependencies_symbol
+        ON instrument_dependencies(yf_symbol)
+    """,
 ]
 
 

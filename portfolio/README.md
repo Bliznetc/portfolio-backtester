@@ -49,7 +49,7 @@ The app will open in your browser. You can:
 ### Programmatic Usage
 
 ```python
-from portfolio.portfolio_backtester import PortfolioBacktester
+from portfolio import PortfolioBacktester
 
 # Initialize backtester
 backtester = PortfolioBacktester(baseline_amount=10000.0)
@@ -76,24 +76,24 @@ for period, perf in performance.items():
 Run the test script to verify everything works:
 
 ```bash
-python3 portfolio/test_backtester.py
+python3 -m unittest portfolio.tests.test_portfolio_calculator
 ```
 
 ## Architecture
 
 ### Components
 
-1. **PortfolioBacktester** (`portfolio_backtester.py`)
+1. **PortfolioBacktester** (`core/portfolio_backtester.py`)
    - Main service class
    - Orchestrates backtesting workflow
    - Handles multiple time periods
 
-2. **PriceDataFetcher** (`data_fetcher.py`)
+2. **PriceDataFetcher** (`core/data_fetcher.py`)
    - Fetches historical price data from Finnhub API
    - Concurrent fetching for multiple tickers
    - Handles date lookups and price retrieval
 
-3. **PortfolioCalculator** (`portfolio_calculator.py`)
+3. **PortfolioCalculator** (`core/portfolio_calculator.py`)
    - Calculates initial shares based on weights
    - Computes portfolio values over time
    - Calculates returns and performance metrics

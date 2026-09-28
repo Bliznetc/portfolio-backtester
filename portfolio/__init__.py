@@ -7,8 +7,8 @@ This module provides tools for:
 - Interactive visualization of portfolio returns
 """
 
-from .portfolio_backtester import PortfolioBacktester
-from .data_fetcher import PriceDataFetcher
-from .portfolio_calculator import PortfolioCalculator
+from .core.portfolio_backtester import PortfolioBacktester
+from .core.data_fetcher import PriceDataFetcher
+from .core.portfolio_calculator import PortfolioCalculator
 
 __all__ = ['PortfolioBacktester', 'PriceDataFetcher', 'PortfolioCalculator']

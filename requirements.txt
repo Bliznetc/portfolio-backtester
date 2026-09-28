@@ -2,3 +2,7 @@ streamlit
 plotly
 yfinance
 pytz
+streamlit-authenticator==0.4.2
+bcrypt
+psycopg2-binary
+pdfplumber

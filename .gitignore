@@ -4,7 +4,10 @@ __pycache__/
 *.pyd
 .Python
 venv/
+.venv/
 .env
+.streamlit/
 .vscode/
 .idea/
 *.log
+.claude/

@@ -4,7 +4,7 @@ Unit tests for portfolio_calculator module using unittest framework.
 
 import unittest
 from datetime import datetime, timedelta
-from .portfolio_calculator import PortfolioCalculator, PortfolioSnapshot
+from portfolio.core.portfolio_calculator import PortfolioCalculator, PortfolioSnapshot
 
 
 class TestPortfolioCalculator(unittest.TestCase):
